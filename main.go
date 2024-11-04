@@ -4,7 +4,9 @@ import (
 	"fmt"
 	imageprocessing "goroutines_pipeline/image_processing"
 	"image"
+	"os"
 	"strings"
+	"time"
 )
 
 type Job struct {
@@ -68,6 +70,15 @@ func saveImage(input <-chan Job) <-chan bool {
 }
 
 func main() {
+	var args = os.Args
+	var usingGoroutines bool = false
+	if len(args) >= 2 {
+		if strings.TrimSpace(strings.ToLower(args[1])) == "goroutines" {
+			usingGoroutines = true
+		} else {
+			fmt.Println("Unrecognised parameter!")
+		}
+	}
 
 	imagePaths := []string{"images/image1.jpeg",
 		"images/image2.jpeg",
@@ -75,16 +86,44 @@ func main() {
 		"images/image4.jpeg",
 	}
 
-	channel1 := loadImage(imagePaths)
-	channel2 := resize(channel1)
-	channel3 := convertToGrayscale(channel2)
-	writeResults := saveImage(channel3)
+	runPipeline(imagePaths, usingGoroutines)
+}
 
-	for success := range writeResults {
-		if success {
+func runPipeline(imagePaths []string, useGoroutines bool) {
+	if useGoroutines {
+		fmt.Println("Running with goroutines:")
+	} else {
+		fmt.Println("Running without goroutines:")
+	}
+	start := time.Now()
+
+	if useGoroutines {
+		channel1 := loadImage(imagePaths)
+		channel2 := resize(channel1)
+		channel3 := convertToGrayscale(channel2)
+		writeResults := saveImage(channel3)
+
+		for success := range writeResults {
+			if success {
+				fmt.Println("Success!")
+			} else {
+				fmt.Println("Failed!")
+			}
+		}
+	} else {
+		for _, path := range imagePaths {
+			job := Job{InputPath: path, OutPath: strings.Replace(path, "images/", "images/output/", 1)}
+			img := imageprocessing.ReadImage(path)
+			job.Image = img
+
+			job.Image = imageprocessing.Resize(job.Image)
+			job.Image = imageprocessing.Grayscale(job.Image)
+
+			imageprocessing.WriteImage(job.OutPath, job.Image)
 			fmt.Println("Success!")
-		} else {
-			fmt.Println("Failed!")
 		}
 	}
+
+	elapsed := time.Since(start)
+	fmt.Printf("Pipeline completed in %s\n", elapsed)
 }
